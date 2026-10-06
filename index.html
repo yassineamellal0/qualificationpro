@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Qualification tickets inwi</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+:root{
+  --ink:#0f2027; --sub:#4a5b63; --line:#d7e0e2;
+  --bg:#f3f7f7; --panel:#ffffff; --accent:#0f6f6a; --accent-ink:#ffffff;
+  --err:#b3261e;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#e8f2f1; --sub:#9db3b0; --line:#233b3a;
+    --bg:#0b1716; --panel:#122423; --accent:#3ad6c9; --accent-ink:#06201d;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#e8f2f1; --sub:#9db3b0; --line:#233b3a;
+  --bg:#0b1716; --panel:#122423; --accent:#3ad6c9; --accent-ink:#06201d;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Iowan Old Style","Georgia",serif;
+  display:flex; justify-content:center;
+}
+main{width:100%; max-width:640px; padding:48px 24px 64px;}
+h1{
+  font-size:1.7rem; margin:0 0 6px; letter-spacing:-.01em; line-height:1.2;
+}
+p.lede{color:var(--sub); margin:0 0 32px; font-size:1.02rem; max-width:52ch; line-height:1.5;}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:4px;
+  padding:28px; margin-bottom:20px;
+}
+.drop{
+  border:1.5px dashed var(--line); border-radius:4px; padding:28px;
+  text-align:center; cursor:pointer; transition:border-color .15s;
+}
+.tabs{display:flex; gap:8px; margin-bottom:16px; font-family:system-ui,sans-serif;}
+.tab{
+  flex:1; padding:9px; border:1px solid var(--line); background:transparent;
+  color:var(--sub); border-radius:4px; cursor:pointer; font-size:.88rem; font-weight:600;
+}
+.tab.active{border-color:var(--accent); color:var(--accent);}
+#pasteArea{
+  width:100%; min-height:160px; padding:12px; border:1.5px dashed var(--line);
+  border-radius:4px; background:transparent; color:var(--ink); font-family:ui-monospace,monospace;
+  font-size:.85rem; resize:vertical;
+}
+#pasteArea:focus{outline:none; border-color:var(--accent);}
+.drop:hover, .drop.drag{border-color:var(--accent);}
+.drop input{display:none;}
+.drop .fname{font-weight:600; margin-top:4px;}
+.drop .hint{color:var(--sub); font-size:.9rem; font-family:system-ui,sans-serif;}
+button.launch{
+  width:100%; margin-top:18px; padding:14px; font-size:1rem; font-weight:600;
+  background:var(--accent); color:var(--accent-ink); border:none; border-radius:4px;
+  cursor:pointer; font-family:system-ui,sans-serif; letter-spacing:.01em;
+}
+button.launch:disabled{opacity:.45; cursor:not-allowed;}
+button.launch:not(:disabled):active{transform:translateY(1px);}
+#status{
+  margin-top:16px; font-family:system-ui,sans-serif; font-size:.92rem; color:var(--sub);
+  min-height:1.2em; white-space:pre-line;
+}
+#status.err{color:var(--err);}
+.result{display:none; margin-top:18px;}
+.result.show{display:block;}
+.summary{
+  font-family:system-ui,sans-serif; font-size:.88rem; color:var(--sub);
+  border-top:1px solid var(--line); padding-top:14px; margin-top:14px;
+  display:flex; flex-wrap:wrap; gap:6px 14px;
+}
+.summary span{white-space:nowrap;}
+#dl{
+  margin-top:14px; background:transparent; color:var(--accent);
+  border:1.5px solid var(--accent);
+}
+footer{color:var(--sub); font-size:.82rem; font-family:system-ui,sans-serif; line-height:1.5;}
+</style>
+</head>
+<body>
+<main>
+  <h1>Qualification des tickets support inwi</h1>
+  <p class="lede">Dépose le fichier Excel export (colonne <code>CommentBody</code>), lance la qualification : chaque ligne reçoit une catégorie, le fichier est trié, coloré et prêt à télécharger.</p>
+
+  <div class="card">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-mode="file" type="button">Depuis un fichier</button>
+      <button class="tab" data-mode="paste" type="button">Coller les données</button>
+    </div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".xlsx,.xls">
+      <div class="hint">Cliquer pour choisir un fichier, ou glisser-déposer</div>
+      <div class="fname" id="fname"></div>
+    </label>
+    <div id="pasteZone" style="display:none">
+      <textarea id="pasteArea" placeholder="Sélectionne les colonnes dans Excel, copie (Ctrl+C), puis colle ici (Ctrl+V)…"></textarea>
+      <div class="hint">La 1ère ligne collée doit être l'en-tête (avec une colonne CommentBody).</div>
+    </div>
+    <button class="launch" id="go" disabled>Lancer la qualification</button>
+    <div id="status"></div>
+    <div class="result" id="result">
+      <div class="summary" id="summary"></div>
+      <button class="launch dl" id="dl" type="button">Télécharger le fichier qualifié</button>
+    </div>
+  </div>
+  <footer>Traitement 100 % local dans le navigateur — le fichier n'est envoyé à aucun serveur.</footer>
+</main>
+
+<script>
+const COLORS = {
+"Eshop":["E0F7FA","006064"],"télévente":["FDEBD0","A04000"],
+"migration prépayé":["D1FAE5","065F46"],"kdo":["FFF3CD","B45309"],
+"scan":["DBEAFE","1D4ED8"],"esim":["F3E5F5","7E22CE"],"point":["D1FAE5","065F46"],
+"création":["FCE7F3","9D174D"],"recharge":["FFEDD5","C2410C"],"mail":["CFFAFE","0E7490"],
+"changement de ff":["FEF9C3","854D0E"],"activation ff":["FDE68A","78350F"],
+"choix d'offre":["FEF3C7","92400E"],"commande":["F5F0EB","44403C"],
+"aucune commande":["FFF1F2","881337"],"sms":["E0F2FE","0369A1"],"facture":["ECFCCB","3F6212"],
+"accès":["FFE4E6","9F1239"],"mdp":["FCE7F3","831843"],"identification":["E0E7FF","312E81"],
+"TOD":["F0FDF4","064E3B"],"changement de numéro":["E0E7FF","3730A3"],"solde":["F0FDF4","14532D"],
+"match":["FFF7ED","9A3412"],"Roaming":["F0F9FF","0C4A6E"],"Incohérence":["FDF4FF","6B21A8"],
+"page blanche":["F1F5F9","475569"],"autre":["F3F4F6","374151"]
+};
+
+const COL_WIDTHS = {
+  "_": 6, "Parent": 8.89, "Parent.Id": 20.78, "Parent.CreatedDate": 10.89,
+  "Parent.CaseNumber": 10.78, "Parent.Inwib2c_Proprietaire_de_la_requete__c": 13.66,
+  "Parent.vlocity_cmt__SubscriptionId__r": 4.33,
+  "Parent.vlocity_cmt__SubscriptionId__r.Inwib2c_Num_ro_de_la_ligne__c": 13.66,
+  "CreatedDate": 14, "CommentBody": 87.66, "récapitulatif": 14.78, "recapitulatif": 14.78
+};
+function norm(s){ return (s||"").toString(); }
+
+function classify(raw){
+  const t = norm(raw);
+  const u = t.toUpperCase();
+  const has = (...arr) => arr.some(k => u.includes(k));
+
+  // Etape 0 - prefixe
+  if (u.startsWith("BO ESHOP") || u.startsWith("BO E-SHOP") || u.startsWith("BO E-CHOP")) return "Eshop";
+  if (u.startsWith("BO TLV")) return "télévente";
+
+  // Etape 1 - migration prepayee
+  if (has("MIGRATION PRP","MIGRATION PRÉ","MIGRATION PRE ","MIGRATION PRÉPAYÉ","MIGRATION PREPAYE")) return "migration prépayé";
+  if (/MIGRATION\s+PR(?!O)/.test(u)) return "migration prépayé";
+
+  // Incoherence explicite
+  if (has("INCOHÉRENCE","INCOHERENCE")) return "Incohérence";
+
+  // Scan CIN bloquant -> identification
+  if (has("CIN") && has("SCAN","BLACKLIST")) return "identification";
+
+  // Regle commande (mot commande + mot-cle de blocage)
+  const hasCommandeWord = has("COMMANDE"," CMD ") || u.startsWith("CMD ");
+  const hasBlockKw = has("BLOCAGE","FINALIS","TERMINER","STATUT ACTIVATION","ÉTAPE D'ACTIVATION",
+                          "ETAPE D'ACTIVATION","RETARD D'ACTIVATION","ACQUISITION COMMANDE");
+  if (hasCommandeWord && hasBlockKw) return "commande";
+
+  const hasForfaitOffer = has("FORFAIT","OFFER","OFFRE");
+  const hasPointWord = has("POINT","PTS","FIDÉLITÉ","FIDELITE");
+
+  // kdo vs point
+  if (has("KDO","CADEAU"," 665")) return hasPointWord ? "point" : "kdo";
+  if (hasPointWord) return "point";
+
+  // scan > esim
+  if (has("SCAN","QR CODE","CODE QR")) return "scan";
+  if (has("ESIM","E-SIM","SWAP")) return "esim";
+
+  // creation > sms
+  if (has("CRÉATION","CREATION","SOUSCRIPTION","INSCRIPTION","NOUVELLE ACQUISITION")) return "création";
+
+  // activation ff / aucune commande / choix d'offre
+  if (has("RETARD D'ACTIVATION","AUCUNE COMMANDE","VISIBLE","INVISIBLE") && hasForfaitOffer) return "activation ff";
+  if (has("AUCUNE COMMANDE")) return "aucune commande";
+  if (has("CHOIX") && hasForfaitOffer) return "choix d'offre";
+  if (has("CHANGEMENT DE FORFAIT","CHANGEMENT D'OFFRE","CHANGEMENT DE PLAN TARIFAIRE","PLAN TARIFAIRE") ) return "changement de ff";
+  if (hasForfaitOffer && has("CHANGEMENT")) return "changement de ff";
+
+  // changement de numero
+  if (has("CHANGEMENT DE NUM","CHANGEMENT DE N°","CHANGEMENT DE LIGNE")) return "changement de numéro";
+
+  // facture vs recharge
+  if (has("RECHARGE")) return "recharge";
+  if (has("FACTURE")) return "facture";
+
+  // mdp > acces
+  if (has("MOT DE PASSE","MDP")) return "mdp";
+  if (has("ACCÈS","ACCES")) return "accès";
+
+  if (has("IDENTIFICATION","IDENTIFIER","ENREGISTR")) return "identification";
+  if (has("TOD","CINÉ","CINE")) return "TOD";
+  if (has("SOLDE","CONSULTATION","BALANCE")) return "solde";
+  if (has("MATCH","1GO","BUT ")) return "match";
+  if (has("ROAMING")) return "Roaming";
+  if (has("PAGE BLANCHE","PAGE BLANC")) return "page blanche";
+  if (has("SMS","OTP","CODE DE CONFIRMATION","CODE DE VERIFICATION","CODE DE VÉRIFICATION")) return "sms";
+  if (has("MAIL") && has("PIN","PUK","CONTRAT")) return "mail";
+
+  return "autre";
+}
+
+const fileInput = document.getElementById('file');
+const drop = document.getElementById('drop');
+const fname = document.getElementById('fname');
+const goBtn = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const summaryEl = document.getElementById('summary');
+const pasteZone = document.getElementById('pasteZone');
+const pasteArea = document.getElementById('pasteArea');
+let mode = 'file';
+document.getElementById('tabs').addEventListener('click', e => {
+  const btn = e.target.closest('.tab'); if (!btn) return;
+  mode = btn.dataset.mode;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b===btn));
+  drop.style.display = mode === 'file' ? '' : 'none';
+  pasteZone.style.display = mode === 'paste' ? '' : 'none';
+  goBtn.disabled = mode === 'file' ? !chosenFile : !pasteArea.value.trim();
+});
+pasteArea.addEventListener('input', () => { goBtn.disabled = !pasteArea.value.trim(); });
+const dlEl = document.getElementById('dl');
+
+let chosenFile = null;
+let pendingBlob = null;
+let downloadsCap = null;
+if (window.claude && window.claude.use){
+  window.claude.use("downloads").then(c => { downloadsCap = c; }).catch(()=>{});
+}
+
+dlEl.addEventListener('click', async () => {
+  if (!pendingBlob) return;
+  dlEl.disabled = true;
+  setStatus("Enregistrement…");
+  try {
+    if (downloadsCap){
+      const res = await downloadsCap.save({ filename: "tickets_qualifies.xlsx", data: pendingBlob });
+      setStatus(res.status === "saved" ? "Fichier enregistré." : "Fichier transmis.");
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pendingBlob);
+      a.download = "tickets_qualifies.xlsx";
+      document.body.appendChild(a); a.click(); a.remove();
+      setStatus("Téléchargement lancé.");
+    }
+  } catch (err){
+    if (err && err.code === "declined"){ setStatus("Téléchargement annulé."); }
+    else { setStatus("Téléchargement impossible : " + (err && err.message ? err.message : err), true); }
+  } finally {
+    dlEl.disabled = false;
+  }
+});
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length){ chosenFile = e.target.files[0]; fname.textContent = chosenFile.name; if(mode==='file') goBtn.disabled = false; }
+});
+['dragover','dragleave','drop'].forEach(evt=>{
+  drop.addEventListener(evt, e=>{ e.preventDefault();
+    if(evt==='dragover') drop.classList.add('drag'); else drop.classList.remove('drag');
+    if(evt==='drop' && e.dataTransfer.files.length){
+      chosenFile = e.dataTransfer.files[0]; fname.textContent = chosenFile.name; if(mode==='file') goBtn.disabled=false;
+    }
+  });
+});
+
+function setStatus(msg, isErr){
+  statusEl.textContent = msg || "";
+  statusEl.className = isErr ? "err" : "";
+}
+
+function parseDelimited(text, delim){
+  const rows = []; let row = []; let field = ''; let inQ = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (inQ){
+      if (c === '"'){ if (text[i+1] === '"'){ field += '"'; i++; } else { inQ = false; } }
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === delim){ row.push(field); field=''; }
+      else if (c === '\r'){ /* skip, paired with \n */ }
+      else if (c === '\n'){ row.push(field); field=''; rows.push(row); row=[]; }
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0){ row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
+}
+
+function parsePasted(text){
+  const grid = parseDelimited(text, '\t');
+  if (grid.length < 2) throw new Error("Colle au moins une ligne d'en-tête et une ligne de données.");
+  const headers = grid[0].map(h => h.trim());
+  const dataRows = grid.slice(1).map(r => headers.map((_,i) => r[i] !== undefined ? r[i] : ""));
+  return { headers, dataRows };
+}
+
+async function readFileRows(file){
+  const buf = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.worksheets[0];
+  const headerRow = ws.getRow(1);
+  let headers = [];
+  headerRow.eachCell({includeEmpty:true},(cell,col)=>{ headers[col-1] = norm(cell.value).trim(); });
+  const dataRows = [];
+  for (let r = 2; r <= ws.rowCount; r++){
+    const row = ws.getRow(r);
+    if (row.cellCount === 0 && !row.hasValues) continue;
+    const values = headers.map((_,i) => {
+      const c = row.getCell(i+1);
+      const v = c ? c.value : null;
+      return (v && typeof v === 'object' && v.richText) ? v.richText.map(p=>p.text).join('') : v;
+    });
+    dataRows.push(values);
+  }
+  return { headers, dataRows };
+}
+
+goBtn.addEventListener('click', async () => {
+  goBtn.disabled = true;
+  resultEl.classList.remove('show');
+  setStatus("Lecture des données…");
+  try {
+    const { headers, dataRows } = mode === 'file' ? await readFileRows(chosenFile) : parsePasted(pasteArea.value);
+
+    let cbIdx = headers.findIndex(h => h.toLowerCase() === 'commentbody');
+    if (cbIdx === -1) cbIdx = headers.findIndex(h => h.toLowerCase().includes('comment'));
+    if (cbIdx === -1) throw new Error("Colonne CommentBody introuvable dans l'en-tête.");
+
+    const outHeaders = headers.slice();
+    let recapIdx = outHeaders.findIndex(h => h.toLowerCase() === 'récapitulatif' || h.toLowerCase()==='recapitulatif');
+    if (recapIdx === -1){ outHeaders.push('récapitulatif'); recapIdx = outHeaders.length - 1; }
+
+    setStatus("Qualification en cours…");
+    const rows = dataRows.filter(v => v.some(x => norm(x).trim() !== ""));
+    if (rows.length === 0) throw new Error("Aucune ligne de données trouvée.");
+    rows.forEach(v => {
+      while (v.length < outHeaders.length) v.push("");
+      v[recapIdx] = classify(v[cbIdx]);
+    });
+
+    const freq = {};
+    rows.forEach(v => { freq[v[recapIdx]] = (freq[v[recapIdx]]||0) + 1; });
+    rows.sort((a,b) => {
+      const fa = freq[a[recapIdx]], fb = freq[b[recapIdx]];
+      if (fb !== fa) return fb - fa;
+      return String(a[recapIdx]).localeCompare(String(b[recapIdx]));
+    });
+
+    setStatus("Génération du fichier…");
+    const out = new ExcelJS.Workbook();
+    const sheet = out.addWorksheet('Tickets qualifiés');
+    sheet.addRow(outHeaders);
+    sheet.getRow(1).font = { bold:true };
+    rows.forEach(v => sheet.addRow(v));
+
+    for (let r = 2; r <= rows.length+1; r++){
+      const rowObj = sheet.getRow(r);
+      const cat = rowObj.getCell(recapIdx+1).value;
+      const [bg, fg] = COLORS[cat] || ["FFFFFF","000000"];
+      for (let c = 1; c <= outHeaders.length; c++){
+        rowObj.getCell(c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF'+bg} };
+      }
+      rowObj.getCell(recapIdx+1).font = { bold:true, color:{argb:'FF'+fg} };
+    }
+    const WIDTHS = {
+      '_':6, 'Parent':6, 'Parent.Id':20.78, 'Parent.CreatedDate':10.89, 'Parent.CaseNumber':10.78,
+      'Parent.Inwib2c_Proprietaire_de_la_requete__c':13.66,
+      'Parent.vlocity_cmt__SubscriptionId__r':4.33,
+      'Parent.vlocity_cmt__SubscriptionId__r.Inwib2c_Num_ro_de_la_ligne__c':13.66,
+      'CreatedDate':14, 'CommentBody':87.66, 'récapitulatif':14.78
+    };
+    outHeaders.forEach((h,i) => { sheet.getColumn(i+1).width = WIDTHS[h] || 14; });
+    sheet.views = [{ state:'frozen', ySplit:1 }];
+
+    const outBuf = await out.xlsx.writeBuffer();
+    pendingBlob = new Blob([outBuf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+    summaryEl.innerHTML = Object.entries(freq)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<span>${k} : ${v}</span>`).join('');
+    resultEl.classList.add('show');
+    setStatus(`${rows.length} tickets qualifiés.`);
+  } catch (err){
+    setStatus("Erreur : " + err.message, true);
+  } finally {
+    goBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
